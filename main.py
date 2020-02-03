@@ -220,6 +220,7 @@ class Solver(object):
         shuffled_idxs = torch.randperm(y.size(0), device=self.device, dtype=torch.long)
         shuffled_idxs = shuffled_idxs[:y.size(0)-y.size(0) % self.args.homomorphic_k_inputs]
         mini_batches_idxs = shuffled_idxs.split(y.size(0) // self.args.homomorphic_k_inputs)
+
         to_sum_groups = []
         to_sum_targets = []
         for mbi in mini_batches_idxs:
@@ -238,9 +239,9 @@ class Solver(object):
                 self.homomorphic_loss += F.cosine_embedding_loss(data,targets,self.aux_y)
         elif self.args.distance_function == "nll":
             if self.homomorphic_loss is None:
-                self.homomorphic_loss = F.nll_loss(data,targets,self.aux_y)
+                self.homomorphic_loss =  (-targets+data.exp().sum(0).log()).mean() #F.nll_loss(data,targets)
             else:
-                self.homomorphic_loss += F.nll_loss(data,targets,self.aux_y)
+                self.homomorphic_loss += (-targets+data.exp().sum(0).log()).mean()#F.nll_loss(data,targets)
         else:
             print("Homomorphic distance function not implemented")
             exit()
