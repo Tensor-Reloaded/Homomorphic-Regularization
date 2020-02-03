@@ -236,6 +236,11 @@ class Solver(object):
                 self.homomorphic_loss = F.cosine_embedding_loss(data,targets,self.aux_y)
             else:
                 self.homomorphic_loss += F.cosine_embedding_loss(data,targets,self.aux_y)
+        elif self.args.distance_function == "nll":
+            if self.homomorphic_loss is None:
+                self.homomorphic_loss = F.nll_loss(data,targets,self.aux_y)
+            else:
+                self.homomorphic_loss += F.nll_loss(data,targets,self.aux_y)
         else:
             print("Homomorphic distance function not implemented")
             exit()
