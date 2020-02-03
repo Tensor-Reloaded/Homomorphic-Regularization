@@ -11,6 +11,7 @@ import numpy as np
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.data
 from torch.utils.data.sampler import SubsetRandomSampler
 import torchvision
@@ -207,6 +208,59 @@ class Solver(object):
         self.batch_plot_idx += 1
         return self.batch_plot_idx - 1
 
+
+    def forward_homomorphic_loss_hook_fn(self,module,X,y):
+        if not self.model.training  or not self.args.homomorphic_regularization:
+            return
+
+        module.forward_handle.remove()
+
+        X = X[0]
+        shuffled_idxs = torch.randperm(y.size(0), device=self.device, dtype=torch.long)
+        shuffled_idxs = shuffled_idxs[:y.size(0)-y.size(0) % self.args.homomorphic_k_inputs]
+        mini_batches_idxs = shuffled_idxs.split(y.size(0) // self.args.homomorphic_k_inputs)
+        to_sum_groups = []
+        to_sum_targets = []
+        for mbi in mini_batches_idxs:
+            to_sum_groups.append(X[mbi].unsqueeze(0))
+            to_sum_targets.append(y[mbi].unsqueeze(0))
+
+        k_weights = torch.full((1,self.args.homomorphic_k_inputs),1/self.args.homomorphic_k_inputs, device=self.device)
+        data = (torch.cat(to_sum_groups, dim=0).T*k_weights[:,:self.args.homomorphic_k_inputs]).T.sum(0)
+        data = module(data)
+        targets = (torch.cat(to_sum_targets, dim=0).T*k_weights[:,:self.args.homomorphic_k_inputs]).T.sum(0)
+
+        if self.args.distance_function == "cosine_loss":
+            if self.homomorphic_loss is None:
+                self.homomorphic_loss = F.cosine_embedding_loss(data,targets,self.aux_y)
+            else:
+                self.homomorphic_loss += F.cosine_embedding_loss(data,targets,self.aux_y)
+        else:
+            print("Homomorphic distance function not implemented")
+            exit()
+        
+        module.forward_handle = module.register_forward_hook(self.forward_homomorphic_loss_hook_fn)
+
+    def add_homomorphic_regularization(self):
+        self.aux_y = torch.ones((1), device=self.device)
+        if self.args.level == "model":
+            self.model.forward_handle = self.model.register_forward_hook(self.forward_homomorphic_loss_hook_fn)
+
+        elif self.args.level == "layer":
+            modules = []
+            def remove_sequential(network, modules):
+                for layer in network.children():
+                    if len(list(layer.children())) > 0:
+                        remove_sequential(layer,modules)
+                    if len(list(layer.children())) == 0:
+                        modules.append(layer)
+            remove_sequential(self.model,modules)
+
+
+            for i,module in enumerate(modules):
+                module.forward_handle = module.register_forward_hook(self.forward_homomorphic_loss_hook_fn)
+
+
     def train(self):
         print("train:")
         self.model.train()
@@ -218,8 +272,14 @@ class Solver(object):
             data, target = data.to(self.device), target.to(self.device)
             self.optimizer.zero_grad()
 
+            self.homomorphic_loss = None
             output = self.model(data)
             loss = self.criterion(output, target)
+
+            if self.args.homomorphic_regularization:
+                loss += self.homomorphic_loss * self.args.homomorphic_regularization_factor
+
+
             if self.args.half:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
@@ -281,6 +341,9 @@ class Solver(object):
             reset_seed(self.args.seed)
         self.load_data()
         self.load_model()
+
+        if self.args.homomorphic_regularization:
+            self.add_homomorphic_regularization()
 
         best_accuracy = 0
         try:
