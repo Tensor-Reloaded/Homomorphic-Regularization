@@ -15,7 +15,7 @@ initialization: 0
 initialization_batch_norm: False
 save_model: False
 save_interval: 5
-save_dir: "Homomorphic Model Level Regularization k=2"
+save_dir: "Homomorphic Block Level Regularization k=2"
 lr_milestones: [30, 60, 90, 120,150]
 use_reduce_lr: False
 reduce_lr_patience: 20
@@ -34,5 +34,5 @@ progress_bar: True
 homomorphic_regularization: True
 homomorphic_regularization_factor: 1.0
 distance_function: "cosine_loss"
-level: "model"
+level: "block"
 homomorphic_k_inputs: 2

@@ -246,6 +246,12 @@ class Solver(object):
         if self.args.level == "model":
             self.model.forward_handle = self.model.register_forward_hook(self.forward_homomorphic_loss_hook_fn)
 
+        elif self.args.level == "block":
+            if "PreResNet" in self.args.model:
+                for name, module in self.model.named_modules():
+                    if re.match(r"^layer[0-9]\.[0-9]+$", name):
+                        module.forward_handle = module.register_forward_hook(self.forward_homomorphic_loss_hook_fn)
+
         elif self.args.level == "layer":
             modules = []
             def remove_sequential(network, modules):
@@ -287,7 +293,10 @@ class Solver(object):
                 loss.backward()
             self.optimizer.step()
             total_loss += loss.item()
-            self.writer.add_scalar("Train/Batch Loss", loss.item(), self.get_batch_plot_idx())
+
+            batch_idx = self.get_batch_plot_idx()
+            self.writer.add_scalar("Train/Batch Loss", loss.item(), batch_idx)
+            self.writer.add_scalar("Train/Homomorphic Batch Loss", self.homomorphic_loss.item(), batch_idx)
 
             prediction = torch.max(output, 1)
             total += target.size(0)
