@@ -32,7 +32,7 @@ seed:
 progress_bar: True
 
 homomorphic_regularization: True
-homomorphic_regularization_factor: 5.0
+homomorphic_regularization_factor: 0.1
 distance_function: "nll"
 level: "model"
 homomorphic_k_inputs: 2

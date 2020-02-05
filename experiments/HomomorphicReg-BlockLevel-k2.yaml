@@ -32,7 +32,7 @@ seed:
 progress_bar: True
 
 homomorphic_regularization: True
-homomorphic_regularization_factor: 5.0
+homomorphic_regularization_factor: 1.0
 distance_function: "cosine_loss"
 level: "block"
 homomorphic_k_inputs: 2

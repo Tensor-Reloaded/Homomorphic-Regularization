@@ -228,20 +228,22 @@ class Solver(object):
             to_sum_targets.append(y[mbi].unsqueeze(0))
 
         k_weights = torch.full((1,self.args.homomorphic_k_inputs),1/self.args.homomorphic_k_inputs, device=self.device)
-        data = (torch.cat(to_sum_groups, dim=0).T*k_weights[:,:self.args.homomorphic_k_inputs]).T.sum(0)
+        # data = (torch.cat(to_sum_groups, dim=0).T*k_weights[:,:self.args.homomorphic_k_inputs]).T.sum(0)
+        data = (torch.cat(to_sum_groups, dim=0).T).T.sum(0)
         data = module(data)
-        targets = (torch.cat(to_sum_targets, dim=0).T*k_weights[:,:self.args.homomorphic_k_inputs]).T.sum(0)
+        # targets = (torch.cat(to_sum_targets, dim=0).T*k_weights[:,:self.args.homomorphic_k_inputs]).T.sum(0)
+        targets = (torch.cat(to_sum_targets, dim=0).T).T.sum(0)
 
         if self.args.distance_function == "cosine_loss":
             if self.homomorphic_loss is None:
                 self.homomorphic_loss = F.cosine_embedding_loss(data,targets,self.aux_y)
             else:
-                self.homomorphic_loss += F.cosine_embedding_loss(data,targets,self.aux_y)
+                self.homomorphic_loss.add(F.cosine_embedding_loss(data,targets,self.aux_y))# += 
         elif self.args.distance_function == "nll":
             if self.homomorphic_loss is None:
-                self.homomorphic_loss =  (-targets+data.exp().sum(0).log()).mean() #F.nll_loss(data,targets)
+                self.homomorphic_loss =  (-F.softmax(targets)+F.softmax(data).exp().sum(0).log()).mean() #F.nll_loss(data,targets)
             else:
-                self.homomorphic_loss += (-targets+data.exp().sum(0).log()).mean()#F.nll_loss(data,targets)
+                self.homomorphic_loss += (-F.softmax(targets)+F.softmax(data).exp().sum(0).log()).mean()#F.nll_loss(data,targets)
         else:
             print("Homomorphic distance function not implemented")
             exit()
