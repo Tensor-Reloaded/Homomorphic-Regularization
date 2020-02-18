@@ -238,12 +238,17 @@ class Solver(object):
             if self.homomorphic_loss is None:
                 self.homomorphic_loss = F.cosine_embedding_loss(data,targets,self.aux_y)
             else:
-                self.homomorphic_loss.add(F.cosine_embedding_loss(data,targets,self.aux_y))# += 
+                self.homomorphic_loss.add(F.cosine_embedding_loss(data,targets,self.aux_y))
+        elif self.args.distance_function == "mse":
+            if self.homomorphic_loss is None:
+                self.homomorphic_loss = F.mse_loss(data,targets)
+            else:
+                self.homomorphic_loss += F.mse_loss(data,targets)
         elif self.args.distance_function == "nll":
             if self.homomorphic_loss is None:
-                self.homomorphic_loss =  (-F.softmax(targets)+F.softmax(data).exp().sum(0).log()).mean() #F.nll_loss(data,targets)
+                self.homomorphic_loss =  (-F.softmax(targets)+F.softmax(data).exp().sum(0).log()).mean()
             else:
-                self.homomorphic_loss += (-F.softmax(targets)+F.softmax(data).exp().sum(0).log()).mean()#F.nll_loss(data,targets)
+                self.homomorphic_loss += (-F.softmax(targets)+F.softmax(data).exp().sum(0).log()).mean()
         else:
             print("Homomorphic distance function not implemented")
             exit()
@@ -251,8 +256,10 @@ class Solver(object):
         module.forward_handle = module.register_forward_hook(self.forward_homomorphic_loss_hook_fn)
 
     def add_homomorphic_regularization(self):
+        self.modules_count = 0
         self.aux_y = torch.ones((1), device=self.device)
         if self.args.level == "model":
+            self.modules_count = 1
             self.model.forward_handle = self.model.register_forward_hook(self.forward_homomorphic_loss_hook_fn)
 
         elif self.args.level == "block":
@@ -273,6 +280,7 @@ class Solver(object):
 
 
             for i,module in enumerate(modules):
+                self.modules_count += 1
                 module.forward_handle = module.register_forward_hook(self.forward_homomorphic_loss_hook_fn)
 
 
@@ -292,8 +300,8 @@ class Solver(object):
             loss = self.criterion(output, target)
 
             if self.args.homomorphic_regularization:
-                loss += self.homomorphic_loss * self.args.homomorphic_regularization_factor
-
+                self.homomorphic_loss = (self.homomorphic_loss * self.args.homomorphic_regularization_factor)/self.modules_count
+                loss += self.homomorphic_loss
 
             if self.args.half:
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -405,7 +413,7 @@ class Solver(object):
 
         print("===> BEST ACC. PERFORMANCE: %.3f%%" % (best_accuracy * 100))
         files = os.listdir(self.save_dir)
-        paths = [os.path.join(self.save_dir, basename) for basename in files if "_0_" not in basename]
+        paths = [os.path.join(self.save_dir, basename) for basename in files if "_0" not in basename]
         if len(paths) > 0:
             src = max(paths, key=os.path.getctime)
             copyfile(src, os.path.join("runs", self.args.save_dir, os.path.basename(src)))
